@@ -4,7 +4,7 @@ You can use either a SensorApp like [Sensorstream IMU+GPS](https://play.google.c
 
 All components are dockerized and managed through docker-compose stack.
 
-![Architecture](architecture.png)
+## Architecture
 
 > Kafka and Zookeper with two replications.
 > Kafka producer exposed on local server to receive streaming from the smartphone
