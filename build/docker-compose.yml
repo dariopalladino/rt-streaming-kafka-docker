@@ -1,0 +1,219 @@
+version: '2'
+
+services:
+  zookeeper1:
+    image: 'bitnami/zookeeper:3-debian-10'
+    container_name: zk-1
+    networks:
+      - iotnet
+    ports:
+      - '12181:12181'
+    volumes:
+      - zk1_data:/bitnami/zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_PORT_NUMBER=12181
+      - ZOO_SERVER_ID=1
+      - ZOO_SERVERS=0.0.0.0:2888:3888,zookeeper2:2888:3888
+      - ZOO_TICK_TIME=2000
+      - ZOO_INIT_LIMIT=10
+      - ZOO_SYNC_LIMIT=5
+      - ZOO_MAX_CLIENT_CNXNS=60
+      - ZOO_HEAP_SIZE=1024
+      - ZOO_AUTOPURGE_PURGEINTERVAL=72
+      - ZOO_AUTOPURGE_SNAPRETAINCOUNT=2
+
+  zookeeper2:
+    image: 'bitnami/zookeeper:3-debian-10'
+    container_name: zk-2
+    networks:
+      - iotnet
+    ports:
+      - '22181:22181'
+    volumes:
+      - zk2_data:/bitnami/zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_PORT_NUMBER=22181
+      - ZOO_SERVER_ID=2
+      - ZOO_SERVERS=zookeeper1:2888:3888,0.0.0.0:2888:3888
+      - ZOO_TICK_TIME=2000
+      - ZOO_INIT_LIMIT=10
+      - ZOO_SYNC_LIMIT=5
+      - ZOO_MAX_CLIENT_CNXNS=60
+      - ZOO_HEAP_SIZE=1024
+      - ZOO_AUTOPURGE_PURGEINTERVAL=72
+      - ZOO_AUTOPURGE_SNAPRETAINCOUNT=2
+
+  kafka1:
+    image: 'bitnami/kafka:2-debian-10'
+    container_name: kafka-1
+    networks:
+      - iotnet
+    ports:
+      - '19093:19093'
+    environment:
+      - KAFKA_CFG_BROKER_ID=101
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zk-1:12181,zk-2:22181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://:9092,EXTERNAL://kafka-1:19093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_NUM_PARTITIONS=2
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=2
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=2
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=2
+      - KAFKA_HEAP_OPTS=-Xmx1024m -Xms1024m
+    volumes:
+      - 'kafka1_data:/bitnami'
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+
+  kafka2:
+    image: 'bitnami/kafka:2-debian-10'
+    container_name: kafka-2
+    networks:
+      - iotnet
+    ports:
+      - '29093:29093'
+    environment:
+      - KAFKA_CFG_BROKER_ID=102
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zk-1:12181,zk-2:22181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=INTERNAL://:9092,EXTERNAL://kafka-2:29093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_CFG_NUM_PARTITIONS=2
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=2
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=2
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=2
+      - KAFKA_HEAP_OPTS=-Xmx1024m -Xms1024m
+    volumes:
+      - 'kafka2_data:/bitnami'
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+
+  kafka-ui:
+    image: 'obsidiandynamics/kafdrop'
+    container_name: 'kafka-web-ui'
+    environment:
+      - KAFKA_BROKERCONNECT=kafka-1:9092,kafka-2:9092
+      - SERVER_PORT=8080
+    networks:
+      - iotnet
+    ports:
+      - "8085:8080"
+    depends_on:
+      - kafka1
+      - kafka2
+      - zookeeper1
+      - zookeeper2
+
+  kafka-magic:
+    image: digitsy/kafka-magic:latest
+    container_name: 'kafka-magic'
+    networks:
+      - iotnet
+    ports:
+      - "8086:80"
+    volumes:
+      - kafkamagic_data:/config
+    environment:
+      KMAGIC_ALLOW_TOPIC_DELETE: "true"
+      KMAGIC_CONFIG_STORE_TYPE: "file"
+      KMAGIC_CONFIG_STORE_CONNECTION: "Data Source=/config/KafkaMagicConfig.db;"
+      KMAGIC_CONFIG_ENCRYPTION_KEY: "cdb0e7c9ee7e75aa35882e04edf5a5e48ab45c5cd99937dd7a499353e10c1ee8"      
+    depends_on: 
+      - kafka1
+      - kafka2
+
+  kafka-producer:
+    build:
+      context: ../kafka-producer
+    container_name: kafka-agent
+    restart: always
+    ports:
+      - "5555:5555/udp"
+    networks:
+      - iotnet
+    depends_on:
+      - kafka1
+      - kafka2
+      - zookeeper1
+      - zookeeper2
+    links:
+      - kafka1
+      - kafka2
+
+  elasticsearch:
+    image: elasticsearch:7.7.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    environment:
+      - "discovery.type=single-node"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - iotnet
+    depends_on:
+      - kafka1
+      - kafka2
+      - zookeeper1
+      - zookeeper2
+  
+  kibana:
+    image: kibana:7.7.0
+    container_name: kibana
+    hostname: kibana
+    ports:
+      - "5601:5601"
+    links:
+      - elasticsearch:elasticsearch
+    depends_on:
+      - elasticsearch
+    networks:
+      - iotnet
+    depends_on:
+      - kafka1
+      - kafka2
+      - zookeeper1
+      - zookeeper2
+  
+  logstash:
+    image: logstash:7.7.0
+    container_name: logstash
+    hostname: logstash
+    ports:
+      - "9600:9600"
+      - "8089:8089"
+    volumes:
+      - ../logstash:/usr/share/logstash/pipeline/
+    links:
+      - elasticsearch:elasticsearch
+      - kafka1
+      - kafka2
+    depends_on:
+      - elasticsearch
+      - kafka1
+      - kafka2
+      - zookeeper1
+      - zookeeper2
+    networks:
+      - iotnet      
+
+volumes:
+  zk1_data:
+  zk2_data:
+  kafka1_data:
+  kafka2_data:
+  kafkamagic_data:
+
+networks:
+  iotnet:
