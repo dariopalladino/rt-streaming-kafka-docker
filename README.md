@@ -6,10 +6,10 @@ All components are dockerized and managed through docker-compose stack.
 
 ## Architecture
 
-> Kafka and Zookeper with two replications.
-> Kafka producer exposed on local server to receive streaming from the smartphone
-> Kafka Magic and Kafdrop to handle topics and partitions, with javascript query-like
-> Logstash, Elasticsearch and Kibana for data visualization and dashboards
+- Kafka and Zookeper with two replications.
+- Kafka producer exposed on local server to receive streaming from the smartphone
+- Kafka Magic with javascript query-like capabilities and Kafdrop to handle topics and partitions
+- Logstash, Elasticsearch and Kibana for data visualization and dashboards
 
 By default, the stack exposes the following ports:
 
